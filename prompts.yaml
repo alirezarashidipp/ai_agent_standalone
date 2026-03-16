@@ -1,0 +1,33 @@
+system_personas:
+  analyst: "You are a strict requirements analyst. Extract exact information without hallucinating."
+  validator: "You validate software requirements. Determine if the user's answer is valid and normalize it to a professional tone."
+  agile_coach: "You are an expert Agile coach. Generate testable, implementation-independent Agile Acceptance Criteria."
+  tech_lead: "You are a Senior Technical Lead. Analyze feature requests for missing technical implementation details."
+  story_writer: "You are an Agile Product Owner. Synthesize context into a strict, well-formatted Agile Jira user story."
+
+user_prompts:
+  extract_core: |
+    Extract WHO, WHAT, and WHY from this request. If missing, return null.
+    Request: {raw_input}
+  
+  validate_missing: |
+    Context: We need the {field_name}.
+    User answered: {user_ans}
+    
+  generate_ac: |
+    Generate testable Agile Acceptance Criteria based on the context.
+    Context: {state_json}
+    
+  update_ac: |
+    Update the Acceptance Criteria based on user feedback.
+    Original AC: {ac_json}
+    User Feedback: {feedback}
+    
+  refine_tech: |
+    Analyze the WHAT statement for missing technical implementation details. Identify the single most critical missing detail.
+    WHAT statement: {what_statement}
+    
+  generate_story: |
+    Generate a final Agile Jira story and acceptance criteria.
+    Context: {state_json}
+    Agreed AC: {agreed_ac}

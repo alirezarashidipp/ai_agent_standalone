@@ -22,12 +22,14 @@ class JiraGroomingAgent:
         raw_input = input("1. Please provide the raw Jira description:\n> ")
         
         self._extract_core_elements(raw_input)
+        
+        # Validates core requirements in order: WHAT, WHO, WHY
         self._clarify_missing_context()
         
-        # REORDERED: Finalize technical constraints before drafting criteria
+        # Finalize technical constraints before drafting criteria
         self._refine_technical_details()
         
-        # DEPENDENCY SHIFT: AC generation now utilizes the fully refined 'WHAT' statement
+        # AC generation utilizes the fully refined 'WHAT' statement
         self._generate_and_review_ac()
         
         self._generate_final_story()
@@ -42,7 +44,8 @@ class JiraGroomingAgent:
         sys_prompt = self.prompts['system_personas']['validator']
         max_retries = 3  # Production circuit breaker
         
-        for field in ['who', 'why']:
+        # 'what' is now strictly validated first, preventing silent failures on generic initial inputs
+        for field in ['what', 'who', 'why']:
             retries = 0
             last_user_ans = None
             

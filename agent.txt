@@ -23,8 +23,13 @@ class JiraGroomingAgent:
         
         self._extract_core_elements(raw_input)
         self._clarify_missing_context()
-        self._generate_and_review_ac()
+        
+        # REORDERED: Finalize technical constraints before drafting criteria
         self._refine_technical_details()
+        
+        # DEPENDENCY SHIFT: AC generation now utilizes the fully refined 'WHAT' statement
+        self._generate_and_review_ac()
+        
         self._generate_final_story()
 
     def _extract_core_elements(self, raw_input: str):
@@ -44,7 +49,6 @@ class JiraGroomingAgent:
             while getattr(self.state, field) is None:
                 if retries >= max_retries:
                     print(f"\n[SYSTEM WARN] Validation threshold exceeded. Forcing ingestion of raw input.")
-                    # Fallback to the last provided answer or a safe default
                     setattr(self.state, field, last_user_ans or f"Unknown {field}")
                     break
                     
@@ -67,6 +71,19 @@ class JiraGroomingAgent:
                 else:
                     retries += 1
                     print(f"The LLM rejected the input for lacking detail. (Attempt {retries}/{max_retries})")
+
+    def _refine_technical_details(self):
+        sys_prompt = self.prompts['system_personas']['tech_lead']
+        user_prompt = self.prompts['user_prompts']['refine_tech'].format(
+            what_statement=self.state.what
+        )
+        
+        analysis = self.llm.query(sys_prompt, user_prompt, MissingTechnicalDetail)
+        
+        if analysis.has_missing_detail and analysis.question:
+            ans = input(f"\nOne technical detail may be missing:\n{analysis.question}\n(Answer, or type 'not important'):\n> ")
+            if ans.strip().lower() != "not important":
+                self.state.what += f" [Technical context: {ans}]"
 
     def _generate_and_review_ac(self):
         print("\nGenerating Acceptance Criteria...")
@@ -92,19 +109,6 @@ class JiraGroomingAgent:
             self.ac = final_ac.criteria
         else:
             self.ac = ac_draft.criteria
-
-    def _refine_technical_details(self):
-        sys_prompt = self.prompts['system_personas']['tech_lead']
-        user_prompt = self.prompts['user_prompts']['refine_tech'].format(
-            what_statement=self.state.what
-        )
-        
-        analysis = self.llm.query(sys_prompt, user_prompt, MissingTechnicalDetail)
-        
-        if analysis.has_missing_detail and analysis.question:
-            ans = input(f"\nOne technical detail may be missing:\n{analysis.question}\n(Answer, or type 'not important'):\n> ")
-            if ans.strip().lower() != "not important":
-                self.state.what += f" [Technical context: {ans}]"
 
     def _generate_final_story(self):
         print("\nGenerating final Jira artifact...")

@@ -1,0 +1,22 @@
+from pydantic import BaseModel, Field
+from typing import Optional, List
+
+class CoreElements(BaseModel):
+    who: Optional[str] = Field(description="The stakeholder requesting the change. Null if missing.")
+    what: Optional[str] = Field(description="The core functionality requested. Null if missing.")
+    why: Optional[str] = Field(description="The business value or purpose. Null if missing.")
+
+class ValidationResult(BaseModel):
+    is_valid: bool = Field(description="True if the user's answer adequately addresses the missing information.")
+    normalized_value: Optional[str] = Field(description="Cleaned, normalized version of the answer.")
+
+class AcceptanceCriteria(BaseModel):
+    criteria: List[str] = Field(description="List of testable, implementation-independent acceptance criteria.")
+
+class MissingTechnicalDetail(BaseModel):
+    has_missing_detail: bool = Field(description="True if a critical technical detail is missing.")
+    question: Optional[str] = Field(description="The single most important question to ask the user to clarify the WHAT.")
+
+class FinalStory(BaseModel):
+    user_story: str = Field(description="The Agile user story sentence (As a... I want to... So that...).")
+    acceptance_criteria: List[str] = Field(description="Finalized list of acceptance criteria.")

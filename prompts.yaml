@@ -10,34 +10,48 @@ user_prompts:
   extract_core: |
     Extract WHO, WHAT, and WHY from this request. If missing, return null.
     Request: {raw_input}
+
+
+
+
+
+
+
+
+
+
+
+
   
-  validate_missing: |
+validate_missing: |
     Context: We are filling out the '{field_name}' field for a Jira User Story.
     User's input: "{user_ans}"
     
     CRITICAL VALIDATION RULES:
     1. If the field is 'WHO': You MUST accept ANY job title (e.g., "Data Engineer", "developer"), team name, or user persona. Do NOT require specific human names.
-    2. If the field is 'WHY': You MUST accept ANY technical or business justification, no matter how brief.
+    2. If the field is 'WHAT': You MUST accept ANY description of a feature, technical task, architecture change, or action. 
+    3. If the field is 'WHY': You MUST accept ANY technical or business justification, no matter how brief.
     
     INSTRUCTIONS:
-    - If the input is a valid role or reason based on the rules above, set `is_valid` to true.
-    - Set `normalized_value` to a clean, professional format (e.g., input "as a data engineer" becomes "Data Engineer").
+    - If the input is a valid role, feature, or reason based on the rules above, set `is_valid` to true.
+    - Set `normalized_value` to a clean, professional format.
     - ONLY set `is_valid` to false if the input is complete gibberish or completely unrelated to the question.
-    
-  generate_ac: |
+
+
+generate_ac: |
     Generate testable Agile Acceptance Criteria based on the context.
     Context: {state_json}
     
-  update_ac: |
+update_ac: |
     Update the Acceptance Criteria based on user feedback.
     Original AC: {ac_json}
     User Feedback: {feedback}
     
-  refine_tech: |
+refine_tech: |
     Analyze the WHAT statement for missing technical implementation details. Identify the single most critical missing detail.
     WHAT statement: {what_statement}
     
-  generate_story: |
+generate_story: |
     Generate a final Agile Jira story and acceptance criteria.
     Context: {state_json}
     Agreed AC: {agreed_ac}

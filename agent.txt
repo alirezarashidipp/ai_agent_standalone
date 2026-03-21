@@ -1,137 +1,158 @@
 import yaml
 from pathlib import Path
-from models import CoreElements, ValidationResult, AcceptanceCriteria, MissingTechnicalDetail, FinalStory
+from models import (
+    SessionState, RawTextExtraction, ValidationResult, 
+    MissingTechnicalDetail, AcceptanceCriteria, FinalStory
+)
 from llm_client import StructuredLLMClient
 
-class JiraGroomingAgent:
+class JiraStatelessPipeline:
     def __init__(self, llm_client: StructuredLLMClient, prompt_file: str = "prompts.yaml"):
         self.llm = llm_client
-        self.state = CoreElements(who=None, what=None, why=None)
-        self.ac = []
         self.prompts = self._load_prompts(prompt_file)
 
     def _load_prompts(self, filepath: str) -> dict:
         path = Path(filepath)
-        if not path.exists():
-            raise FileNotFoundError(f"[FATAL] Prompt configuration file missing: {filepath}")
         with open(path, "r", encoding="utf-8") as file:
             return yaml.safe_load(file)
 
-    def run(self):
-        print("--- AI Jira Grooming Assistant ---")
-        raw_input = input("1. Please provide the raw Jira description:\n> ")
+    def run(self, raw_text: str) -> SessionState:
+        print("--- Enterprise Raw-Text Jira Pipeline ---")
         
-        self._extract_core_elements(raw_input)
-        
-        # Validates core requirements in order: WHAT, WHO, WHY
-        self._clarify_missing_context()
-        
-        # Finalize technical constraints before drafting criteria
-        self._refine_technical_details()
-        
-        # AC generation utilizes the fully refined 'WHAT' statement
-        self._generate_and_review_ac()
-        
-        self._generate_final_story()
+        # Phase 0: Zero-Shot Extraction
+        state = self._extract_initial_state(raw_text)
 
-    def _extract_core_elements(self, raw_input: str):
-        sys_prompt = self.prompts['system_personas']['analyst']
-        user_prompt = self.prompts['user_prompts']['extract_core'].format(raw_input=raw_input)
-        
-        self.state = self.llm.query(sys_prompt, user_prompt, CoreElements)
+        # Phase 1: JIT Validation
+        state = self._resolve_core_triad(state)
 
-    def _clarify_missing_context(self):
+        # Phase 2: Always-Dynamic Grooming
+        state = self._gather_technical_context(state)
+
+        # Phase 3: AC Synthesis
+        state = self._synthesize_ac(state)
+
+        # Phase 4: Final Artifact Generation
+        state = self._generate_final_story(state)
+
+        return state
+
+    def _extract_initial_state(self, raw_text: str) -> SessionState:
+        print("\n[SYSTEM] Analyzing raw input...")
+        sys_prompt = self.prompts['system_personas']['extractor']
+        user_prompt = self.prompts['user_prompts']['extract_raw_text'].format(raw_text=raw_text)
+        
+        extraction = self.llm.query(sys_prompt, user_prompt, RawTextExtraction)
+        
+        return SessionState(
+            what=extraction.what.evidence if extraction.what.identified else None,
+            why=extraction.why.evidence if extraction.why.identified else None,
+            who=extraction.who.evidence if extraction.who.identified else None,
+            ac_evidence=extraction.ac_evidence
+        )
+
+    def _resolve_core_triad(self, state: SessionState) -> SessionState:
         sys_prompt = self.prompts['system_personas']['validator']
-        max_retries = 3  # Production circuit breaker
-        
-        # 'what' is now strictly validated first, preventing silent failures on generic initial inputs
-        for field in ['what', 'who', 'why']:
+        max_retries = 3
+
+        for field in ['what', 'why', 'who']:
             retries = 0
-            last_user_ans = None
-            
-            while getattr(self.state, field) is None:
+            while getattr(state, field) is None:
                 if retries >= max_retries:
-                    print(f"\n[SYSTEM WARN] Validation threshold exceeded. Forcing ingestion of raw input.")
-                    setattr(self.state, field, last_user_ans or f"Unknown {field}")
+                    print(f"\n[SYSTEM WARN] Threshold exceeded. Forcing raw input for {field.upper()}.")
+                    setattr(state, field, f"Unknown {field}")
                     break
-                    
+
                 user_ans = input(f"\nMissing {field.upper()}. Please clarify:\n> ").strip()
                 if not user_ans:
-                    print("Input cannot be empty. Try again.")
                     continue
-                    
-                last_user_ans = user_ans
-                
+
                 user_prompt = self.prompts['user_prompts']['validate_missing'].format(
-                    field_name=field.upper(),
-                    user_ans=user_ans
+                    field_name=field.upper(), user_ans=user_ans
                 )
-                
+
                 validation = self.llm.query(sys_prompt, user_prompt, ValidationResult)
-                
+
                 if validation.is_valid:
-                    setattr(self.state, field, validation.normalized_value)
+                    setattr(state, field, validation.normalized_value)
                 else:
                     retries += 1
-                    print(f"The LLM rejected the input for lacking detail. (Attempt {retries}/{max_retries})")
+                    reason = validation.rejection_reason or "Invalid input."
+                    print(f"\n[REJECTED] {reason} (Attempt {retries}/{max_retries})")
 
-    def _refine_technical_details(self):
+        return state
+
+    def _gather_technical_context(self, state: SessionState) -> SessionState:
+        print("\n[SYSTEM] Generating dynamic grooming questions...")
         sys_prompt = self.prompts['system_personas']['tech_lead']
-        user_prompt = self.prompts['user_prompts']['refine_tech'].format(
-            what_statement=self.state.what
-        )
+        user_prompt = self.prompts['user_prompts']['generate_dynamic_questions'].format(what_statement=state.what)
         
         analysis = self.llm.query(sys_prompt, user_prompt, MissingTechnicalDetail)
         
         if analysis.has_missing_details and analysis.questions:
-            print(f"\n[SYSTEM] The technical lead identified {len(analysis.questions)} potential missing detail(s).")
+            questions = analysis.questions[:4]
+            for i, q in enumerate(questions, 1):
+                ans = input(f"\nTech Detail {i}/{len(questions)}:\n{q}\n(Answer, or type 'skip'):\n> ").strip()
+                if ans.lower() not in ["skip", "no", "n/a", ""]:
+                    state.tech_notes.append(f"Q: {q} | A: {ans}")
+        else:
+            print("[SYSTEM] No technical questions needed.")
             
-            for i, question in enumerate(analysis.questions, 1):
-                ans = input(f"\nDetail {i}/{len(analysis.questions)}:\n{question}\n(Answer, or type 'skip' / 'not important'):\n> ").strip()
-                
-                # Check against common dismissal phrases
-                if ans.lower() not in ["not important", "skip", "no", "n/a", ""]:
-                    self.state.what += f" [Technical Context: {ans}]"
+        return state
 
-    def _generate_and_review_ac(self):
-        print("\nGenerating Acceptance Criteria...")
+    def _synthesize_ac(self, state: SessionState) -> SessionState:
+        print("\n[SYSTEM] Synthesizing Acceptance Criteria...")
         sys_prompt = self.prompts['system_personas']['agile_coach']
         user_prompt = self.prompts['user_prompts']['generate_ac'].format(
-            state_json=self.state.model_dump_json()
+            who=state.who, what=state.what, why=state.why, tech_notes=state.tech_notes,
+            ac_evidence=state.ac_evidence or "None"
         )
         
         ac_draft = self.llm.query(sys_prompt, user_prompt, AcceptanceCriteria)
+        current_ac = ac_draft.criteria
         
-        print("\nProposed Acceptance Criteria:")
-        for idx, crit in enumerate(ac_draft.criteria, 1):
-            print(f"{idx}. {crit}")
-            
-        feedback = input("\nDo you confirm these AC, or would you like to modify them? (Type 'confirm' or provide edits):\n> ")
-        
-        if feedback.strip().lower() != 'confirm':
-            update_user_prompt = self.prompts['user_prompts']['update_ac'].format(
-                ac_json=ac_draft.model_dump_json(),
-                feedback=feedback
+        for attempt in range(3):
+            print("\n--- Proposed AC ---")
+            for idx, crit in enumerate(current_ac, 1):
+                print(f"{idx}. {crit}")
+                
+            feedback = input(f"\nConfirm AC? (Type 'confirm' or edits. Edits left: {3 - attempt}):\n> ").strip()
+            if feedback.lower() == 'confirm':
+                break
+                
+            update_prompt = self.prompts['user_prompts']['update_ac'].format(
+                ac_json={"criteria": current_ac}, feedback=feedback
             )
-            final_ac = self.llm.query(sys_prompt, update_user_prompt, AcceptanceCriteria)
-            self.ac = final_ac.criteria
-        else:
-            self.ac = ac_draft.criteria
+            current_ac = self.llm.query(sys_prompt, update_prompt, AcceptanceCriteria).criteria
 
-    def _generate_final_story(self):
-        print("\nGenerating final Jira artifact...")
+        state.ac_list = current_ac
+        return state
+
+    def _generate_final_story(self, state: SessionState) -> SessionState:
+        print("\n[SYSTEM] Generating final artifact...")
         sys_prompt = self.prompts['system_personas']['story_writer']
         user_prompt = self.prompts['user_prompts']['generate_story'].format(
-            state_json=self.state.model_dump_json(),
-            agreed_ac=self.ac
+            who=state.who, what=state.what, why=state.why, agreed_ac=state.ac_list
         )
         
-        final = self.llm.query(sys_prompt, user_prompt, FinalStory)
+        story_draft = self.llm.query(sys_prompt, user_prompt, FinalStory)
+        current_story = story_draft
         
-        print("\n" + "="*40)
-        print("FINAL JIRA STORY")
-        print("="*40)
-        print(final.user_story)
-        print("\nAcceptance Criteria:")
-        for idx, crit in enumerate(final.acceptance_criteria, 1):
-            print(f"{idx}. {crit}")
+        for attempt in range(3):
+            print("\n" + "="*50 + "\nFINAL AGILE JIRA STORY\n" + "="*50)
+            print(current_story.user_story)
+            print("\nAC:")
+            for idx, crit in enumerate(current_story.acceptance_criteria, 1):
+                print(f"{idx}. {crit}")
+                
+            feedback = input(f"\nConfirm Story? (Type 'confirm' or edits. Edits left: {3 - attempt}):\n> ").strip()
+            if feedback.lower() == 'confirm':
+                break
+                
+            update_prompt = self.prompts['user_prompts']['update_story'].format(
+                story_json=current_story.model_dump_json(), feedback=feedback
+            )
+            current_story = self.llm.query(sys_prompt, update_prompt, FinalStory)
+
+        state.final_story = current_story.user_story
+        state.ac_list = current_story.acceptance_criteria
+        return state

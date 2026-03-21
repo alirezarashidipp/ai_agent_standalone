@@ -1,22 +1,46 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List
 
-class CoreElements(BaseModel):
-    who: Optional[str] = Field(description="The stakeholder requesting the change. Null if missing.")
-    what: Optional[str] = Field(description="The core functionality requested. Null if missing.")
-    why: Optional[str] = Field(description="The business value or purpose. Null if missing.")
+# ==========================================
+# 1. RAW TEXT EXTRACTION (PHASE 0)
+# ==========================================
+class ExtractedElement(BaseModel):
+    identified: bool = Field(description="True ONLY if the element is explicitly clear in the text.")
+    evidence: Optional[str] = Field(description="The extracted text. Null if identified is false.")
 
+class RawTextExtraction(BaseModel):
+    who: ExtractedElement
+    what: ExtractedElement
+    why: ExtractedElement
+    ac_evidence: Optional[str] = Field(description="Any extracted explicit constraints or rules. Null if none found.")
+
+# ==========================================
+# 2. SESSION STATE (STATELESS MEMORY)
+# ==========================================
+class SessionState(BaseModel):
+    what: Optional[str] = None
+    why: Optional[str] = None
+    who: Optional[str] = None
+    ac_evidence: Optional[str] = None
+    tech_notes: List[str] = Field(default_factory=list)
+    ac_list: List[str] = Field(default_factory=list)
+    final_story: Optional[str] = None
+
+# ==========================================
+# 3. LLM OUTPUT SCHEMAS (CONTRACTS)
+# ==========================================
 class ValidationResult(BaseModel):
-    is_valid: bool = Field(description="True if the user's answer adequately addresses the missing information.")
-    normalized_value: Optional[str] = Field(description="Cleaned, normalized version of the answer.")
-
-class AcceptanceCriteria(BaseModel):
-    criteria: List[str] = Field(description="List of testable, implementation-independent acceptance criteria.")
+    is_valid: bool = Field(description="True if the user's input is a valid requirement.")
+    normalized_value: Optional[str] = Field(description="Cleaned format of the input if valid.")
+    rejection_reason: Optional[str] = Field(description="CRITICAL: 1-sentence reason why the input was rejected.")
 
 class MissingTechnicalDetail(BaseModel):
-    has_missing_details: bool = Field(description="True if critical technical details are missing.")
-    questions: List[str] = Field(description="A list of UP TO 3 critical questions to clarify the WHAT. Empty if nothing crucial is missing.")
+    has_missing_details: bool = Field(description="True if WHAT lacks critical technical details.")
+    questions: List[str] = Field(description="List of UP TO 4 critical technical questions. Empty if none.")
+
+class AcceptanceCriteria(BaseModel):
+    criteria: List[str] = Field(description="List of finalized Agile Acceptance Criteria.")
 
 class FinalStory(BaseModel):
-    user_story: str = Field(description="The Agile user story sentence (As a... I want to... So that...).")
+    user_story: str = Field(description="Final Agile user story sentence.")
     acceptance_criteria: List[str] = Field(description="Finalized list of acceptance criteria.")

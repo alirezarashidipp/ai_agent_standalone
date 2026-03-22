@@ -4,13 +4,14 @@ from agent import JiraStatelessPipeline
 if __name__ == "__main__":
     print("[SYSTEM BOOT] Initializing Enterprise Raw-Text Pipeline...")
     try:
-        # ورودی خام که فقط WHAT در آن تا حدودی مشخص است. 
-        # مدل استخراج (فاز 0) باید WHO و WHY را False برگرداند.
+        # Initial input with only 'WHAT' vaguely defined. 
+        # WHO and WHY should evaluate to False in Phase 0.
         raw_input = "we need to add a new column in the Project database table to store project status."
         
         client = StructuredLLMClient() 
         pipeline = JiraStatelessPipeline(client)
         
+        # Starts the sync wrapper which blocks until the interactive loop finishes
         final_state = pipeline.run(raw_input)
         
         print("\n" + "="*50)

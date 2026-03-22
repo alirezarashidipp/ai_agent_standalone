@@ -2,6 +2,8 @@ import yaml
 import asyncio
 from typing import TypedDict, List, Optional
 from langgraph.graph import StateGraph, START, END
+
+# Ensure these imports match your actual file structures
 from llm_client import StructuredLLMClient
 from models import (
     SessionState, RawTextExtraction, ValidationResult, 
@@ -23,13 +25,15 @@ class GraphState(TypedDict):
     final_user_story: Optional[str]
     final_ac_list: List[str]
     
-    # Retry Guardrails
+    # Guardrails & Retries
     phase1_retries: int
     synthesis_retries: int
     
-    # Flow Control Flags
+    # Flow Control
     sys_message: str
     is_complete: bool
+    _needs_tech_init: bool
+    _artifact_confirmed: bool
 
 class JiraStatelessPipeline:
     def __init__(self, llm_client: StructuredLLMClient):
@@ -48,13 +52,16 @@ class JiraStatelessPipeline:
         return asyncio.run(self._orchestrate_cli_loop(raw_input))
 
     async def _orchestrate_cli_loop(self, initial_input: str) -> SessionState:
+        # Strict initialization of all TypedDict keys to prevent KeyError or dict access issues.
         state: GraphState = {
             "user_input": initial_input,
             "who": None, "what": None, "why": None, "ac_evidence": None,
             "pending_questions": [], "tech_notes": [], 
             "final_user_story": None, "final_ac_list": [],
             "phase1_retries": 0, "synthesis_retries": 0,
-            "sys_message": "", "is_complete": False
+            "sys_message": "", "is_complete": False,
+            "_needs_tech_init": True,
+            "_artifact_confirmed": False
         }
 
         while not state["is_complete"]:
@@ -96,18 +103,18 @@ class JiraStatelessPipeline:
     # ROUTING LOGIC
     # ==========================================
     def _route_from_start(self, state: GraphState) -> str:
-        if not state["what"] and not state["who"] and not state["why"]:
+        if not state.get("what") and not state.get("who") and not state.get("why"):
             return "phase0_extractor"
         return self._route_general(state)
 
     def _route_general(self, state: GraphState) -> str:
-        if state["is_complete"]:
+        if state.get("is_complete"):
             return END
-        if not state["what"] or not state["who"] or not state["why"]:
+        if not state.get("what") or not state.get("who") or not state.get("why"):
             return "phase1_validator"
-        if getattr(state, "_needs_tech_init", True) or state["pending_questions"]:
+        if state.get("_needs_tech_init") or state.get("pending_questions"):
             return "phase2_tech"
-        if not getattr(state, "_artifact_confirmed", False):
+        if not state.get("_artifact_confirmed"):
             return "phase3_unified"
         return END
 
@@ -126,7 +133,7 @@ class JiraStatelessPipeline:
         return state
 
     async def _node_validator(self, state: GraphState) -> GraphState:
-        missing = [f for f in ["what", "why", "who"] if not state[f]]
+        missing = [f for f in ["what", "why", "who"] if not state.get(f)]
         if not missing:
             return state
 
@@ -156,7 +163,7 @@ class JiraStatelessPipeline:
         return state
 
     async def _node_tech_grooming(self, state: GraphState) -> GraphState:
-        if getattr(state, "_needs_tech_init", True):
+        if state.get("_needs_tech_init"):
             prompt = self.templates["generate_dynamic_questions"].format(what_statement=state["what"])
             tech: MissingTechnicalDetail = await self.llm.query(self.personas["tech_lead"], prompt, MissingTechnicalDetail)
             state["pending_questions"] = tech.questions
@@ -194,7 +201,7 @@ class JiraStatelessPipeline:
             state["sys_message"] = "Feedback limit reached (3/3). Force committing the artifact to preserve pipeline stability."
             return state
 
-        if not state["final_user_story"]:
+        if not state.get("final_user_story"):
             prompt = self.templates["generate_agile_artifact"].format(
                 who=state["who"], what=state["what"], why=state["why"],
                 tech_notes="\n".join(state["tech_notes"]), ac_evidence=state["ac_evidence"] or "None"

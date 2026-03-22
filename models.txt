@@ -1,18 +1,30 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator, ConfigDict
 from typing import Optional, List
 
 # ==========================================
 # 1. RAW TEXT EXTRACTION (PHASE 0)
 # ==========================================
 class ExtractedElement(BaseModel):
+    model_config = ConfigDict(strict=True)
+    
     identified: bool = Field(description="True ONLY if the element is explicitly clear in the text.")
-    evidence: Optional[str] = Field(description="The extracted text. Null if identified is false.")
+    evidence: Optional[str] = Field(default=None, description="The extracted text. Null if identified is false.")
+
+    @model_validator(mode='after')
+    def validate_evidence(self) -> 'ExtractedElement':
+        if self.identified and not self.evidence:
+            raise ValueError("Data Integrity Error: 'identified' is True but 'evidence' is null.")
+        if not self.identified and self.evidence is not None:
+            self.evidence = None
+        return self
 
 class RawTextExtraction(BaseModel):
+    model_config = ConfigDict(strict=True)
+    
     who: ExtractedElement
     what: ExtractedElement
     why: ExtractedElement
-    ac_evidence: Optional[str] = Field(description="Any extracted explicit constraints or rules. Null if none found.")
+    ac_evidence: Optional[str] = Field(default=None, description="Explicit constraints or rules. Null if none found.")
 
 # ==========================================
 # 2. SESSION STATE (STATELESS MEMORY)
@@ -23,24 +35,35 @@ class SessionState(BaseModel):
     who: Optional[str] = None
     ac_evidence: Optional[str] = None
     tech_notes: List[str] = Field(default_factory=list)
-    ac_list: List[str] = Field(default_factory=list)
-    final_story: Optional[str] = None
+    
+    # Unified Synthesis Phase (Phase 3)
+    final_user_story: Optional[str] = None
+    final_ac_list: List[str] = Field(default_factory=list)
 
 # ==========================================
 # 3. LLM OUTPUT SCHEMAS (CONTRACTS)
 # ==========================================
 class ValidationResult(BaseModel):
+    model_config = ConfigDict(strict=True)
+    
     is_valid: bool = Field(description="True if the user's input is a valid requirement.")
-    normalized_value: Optional[str] = Field(description="Cleaned format of the input if valid.")
-    rejection_reason: Optional[str] = Field(description="CRITICAL: 1-sentence reason why the input was rejected.")
+    normalized_value: Optional[str] = Field(default=None, description="Cleaned format of the input if valid.")
+    rejection_reason: Optional[str] = Field(default=None, description="CRITICAL: 1-sentence reason why the input was rejected.")
 
 class MissingTechnicalDetail(BaseModel):
+    model_config = ConfigDict(strict=True)
+    
     has_missing_details: bool = Field(description="True if WHAT lacks critical technical details.")
-    questions: List[str] = Field(description="List of UP TO 4 critical technical questions. Empty if none.")
+    questions: List[str] = Field(description="List of UP TO 4 critical technical questions. Empty if none.", max_length=4)
 
-class AcceptanceCriteria(BaseModel):
-    criteria: List[str] = Field(description="List of finalized Agile Acceptance Criteria.")
+class TechAnswerValidation(BaseModel):
+    model_config = ConfigDict(strict=True)
+    
+    is_valid: bool = Field(description="True if user provided actual technical context. False if they said 'I dont know', 'skip', or gibberish.")
+    reason: str = Field(description="Reason for rejection or acceptance.")
 
-class FinalStory(BaseModel):
-    user_story: str = Field(description="Final Agile user story sentence.")
-    acceptance_criteria: List[str] = Field(description="Finalized list of acceptance criteria.")
+class AgileArtifact(BaseModel):
+    model_config = ConfigDict(strict=True)
+    
+    user_story: str = Field(description="Final Agile user story sentence (As a... I want to... So that...).")
+    acceptance_criteria: List[str] = Field(description="Finalized list of testable acceptance criteria.", min_length=1)

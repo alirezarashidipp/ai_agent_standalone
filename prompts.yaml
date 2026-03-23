@@ -1,6 +1,5 @@
 # prompts.yaml
 # Centralized prompt management for the Jira Story Generator Pipeline.
-# Ensure no Farsi characters are used in this file to prevent encoding issues in CI/CD.
 
 extractor:
   system: >

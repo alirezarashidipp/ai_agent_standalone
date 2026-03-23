@@ -14,16 +14,25 @@ def run_pipeline():
         print("[FATAL] Input cannot be empty. Aborting.")
         return
 
-    # Seed the initial state
+    # Strict initialization of all TypedDict keys to prevent Graph execution crashes
     initial_state = {
         "raw_input": raw_text,
+        "who": None,
+        "what": None,
+        "why": None,
+        "ac_evidence": None,
         "missing_fields": [],
+        "current_field_target": None,
         "phase1_retries": 0,
         "is_aborted": False,
+        "abort_reason": None,
         "pending_questions": [],
+        "current_question": None,
         "tech_notes": [],
+        "final_story": None,
         "feedback_retries": 0,
-        "is_complete": False
+        "is_complete": False,
+        "feedback_raw": ""
     }
 
     current_input = initial_state
@@ -45,7 +54,7 @@ def run_pipeline():
                         print("=========================")
                         return
 
-            # Check snapshot for pending interrupts
+            # Check snapshot for pending interrupts (Human-in-the-Loop)
             state_snapshot = graph.get_state(config)
             if state_snapshot.next:
                 # Graph is blocked, waiting for human input
@@ -57,14 +66,14 @@ def run_pipeline():
                     print("[Process Terminated]")
                     break
                 
-                # Resume execution with the human feedback
+                # Resume execution passing the human payload via Command API
                 current_input = Command(resume=user_response)
             else:
-                # No more nodes to run
+                # Execution queue exhausted
                 break
                 
         except Exception as e:
-            print(f"[FATAL ERROR] Pipeline crashed: {e}")
+            print(f"[FATAL ERROR] Pipeline crashed at runtime: {e}")
             break
 
 if __name__ == "__main__":

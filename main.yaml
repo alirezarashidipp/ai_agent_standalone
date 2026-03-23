@@ -24,6 +24,7 @@ def run_pipeline():
         "missing_fields": [],
         "current_field_target": None,
         "phase1_retries": 0,
+        "last_rejection_reason": None, # Initialized to prevent KeyError
         "is_aborted": False,
         "abort_reason": None,
         "pending_questions": [],
@@ -45,7 +46,6 @@ def run_pipeline():
                     print(f"[Trace] Node executed -> {node_name}")
                     
                     # Guardrail: LangGraph v0.2+ yields a tuple for '__interrupt__' events. 
-                    # We must skip non-dictionary payloads to prevent attribute errors.
                     if not isinstance(state_update, dict):
                         continue
                     

@@ -1,24 +1,18 @@
-from llm_client import StructuredLLMClient
-from agent import JiraStatelessPipeline
+# main.py (Updated for LangGraph)
+from agent import app
 
+def run_pipeline():
+    initial_state = {
+        "raw_input": "As a user I want to login so that I can see my dashboard",
+        "phase1_retries": 0,
+        "feedback_retries": 0
+    }
+    
+    # 
+    for output in app.stream(initial_state):
+        for node_name, state_update in output.items():
+            print(f"--- Finished Node: {node_name} ---")
+            #
+            
 if __name__ == "__main__":
-    print("[SYSTEM BOOT] Initializing Enterprise Raw-Text Pipeline...")
-    try:
-        # Initial input with only 'WHAT' vaguely defined. 
-        # WHO and WHY should evaluate to False in Phase 0.
-        raw_input = "we need to add a new column in the Project database table to store project status."
-        
-        client = StructuredLLMClient() 
-        pipeline = JiraStatelessPipeline(client)
-        
-        # Starts the sync wrapper which blocks until the interactive loop finishes
-        final_state = pipeline.run(raw_input)
-        
-        print("\n" + "="*50)
-        print("[SYSTEM TERMINATE] Pipeline Execution Completed Successfully.")
-        print("Final Exportable Session State (JSON):")
-        print(final_state.model_dump_json(indent=2))
-        print("="*50)
-        
-    except Exception as e:
-        print(f"\n[FATAL ERROR] Execution halted abruptly: {e}")
+    run_pipeline()

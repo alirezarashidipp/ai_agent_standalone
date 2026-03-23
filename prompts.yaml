@@ -51,7 +51,7 @@ agile_coach:
     - Who: {who}
     - What: {what}
     - Why: {why}
-    - Technical Notes (from architecture review): {tech_notes}
+    - Technical Constraints (from architecture review answers): {tech_notes}
     - Initial Acceptance Criteria: {ac_evidence}
     - User Feedback (if this is a rewrite): {feedback}
     
@@ -62,11 +62,12 @@ agile_coach:
     As a [Who], I want to [What], so that [Why].
     
     **Acceptance Criteria:**
-    [Merge initial AC and Technical Notes into testable, bulleted BDD format (Given/When/Then) where possible]
-    
-    **Technical Notes:**
-    [Summarize underlying constraints]
+    [You MUST seamlessly merge 'Initial Acceptance Criteria' and 'Technical Constraints' into a single, unified bulleted list of testable conditions. 
+    - Scenario 1: If 'Initial Acceptance Criteria' exists, merge the 'Technical Constraints' into it as additional engineering validation rules.
+    - Scenario 2: If 'Initial Acceptance Criteria' is empty or missing, use the 'Technical Constraints' as the foundational Acceptance Criteria.
+    Format them using BDD (Given/When/Then) where applicable.]
 
     Rules:
     1. If User Feedback is provided, you MUST adapt the entire story to satisfy the feedback.
     2. Do not include markdown code blocks for the final text, just format it cleanly.
+    3. NEVER output a "Technical Notes" or "Constraints" section. All technical details MUST be strictly formulated as testable Acceptance Criteria under the **Acceptance Criteria:** header.
